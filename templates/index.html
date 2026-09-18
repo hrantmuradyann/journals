@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>News Digest</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div>
+      <h1>News Digest</h1>
+      <p class="subtitle" id="status">Loading…</p>
+    </div>
+    <button id="refresh-btn" class="btn-primary">
+      <span class="spinner" hidden></span>
+      <span class="btn-label">Check latest news</span>
+    </button>
+  </div>
+</header>
+
+<main class="container">
+  <div id="message" class="message" hidden></div>
+
+  <nav class="tabs" id="tabs"></nav>
+
+  <div class="toolbar">
+    <input type="search" id="search" placeholder="Search headlines and descriptions…" autocomplete="off">
+    <div class="chips" id="pub-chips"></div>
+  </div>
+
+  <section id="content"></section>
+</main>
+
+<script>
+  // ---- State ---------------------------------------------------------------
+  var report = null;                 // everything returned by /articles
+  var activeTab = "Same story";
+  var hiddenPublications = {};       // publication name -> true when hidden
+  var searchText = "";
+
+  // Tab order shown in the page. Topic and region names come from the server.
+  function tabList() {
+    var tabs = ["Same story", "Educational"];
+    report.topics.forEach(function (t) { if (t !== "Other") tabs.push(t); });
+    report.regions.forEach(function (r) { tabs.push(r); });
+    tabs.push("Other");
+    return tabs;
+  }
+
+  // ---- Loading -------------------------------------------------------------
+  function loadArticles() {
+    setStatus("Loading…");
+    fetch("/articles")
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.ok) {
+          showMessage(data.message, false);
+          setStatus("No data yet");
+          return;
+        }
+        report = data;
+        hideMessage();
+        setStatus(report.total + " articles · last fetched " + report.fetched_at);
+        renderTabs();
+        renderPublicationChips();
+        renderContent();
+      })
+      .catch(function (err) { showMessage("Could not load articles: " + err, false); });
+  }
+
+  function refreshNews() {
+    var btn = document.getElementById("refresh-btn");
+    btn.disabled = true;
+    btn.querySelector(".spinner").hidden = false;
+    btn.querySelector(".btn-label").textContent = "Fetching…";
+    setStatus("Downloading feeds, this takes a minute or two…");
+    hideMessage();
+
+    fetch("/refresh", { method: "POST" })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.ok) {
+          showMessage("Fetch script failed:\n" + data.log, false);
+        }
+        loadArticles();
+      })
+      .catch(function (err) { showMessage("Refresh failed: " + err, false); })
+      .finally(function () {
+        btn.disabled = false;
+        btn.querySelector(".spinner").hidden = true;
+        btn.querySelector(".btn-label").textContent = "Check latest news";
+      });
+  }
+
+  // ---- Small helpers -------------------------------------------------------
+  function setStatus(text) { document.getElementById("status").textContent = text; }
+
+  function showMessage(text, isGood) {
+    var box = document.getElementById("message");
+    box.textContent = text;
+    box.className = "message " + (isGood ? "good" : "bad");
+    box.hidden = false;
+  }
+  function hideMessage() { document.getElementById("message").hidden = true; }
+
+  function el(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  function slug(name) { return name.toLowerCase().replace(/[^a-z]+/g, "-"); }
+
+  // Newest first; "published" is "YYYY-MM-DD HH:MM" so plain string compare works
+  function byNewest(a, b) { return a.published < b.published ? 1 : a.published > b.published ? -1 : 0; }
+
+  function isVisible(article) {
+    if (hiddenPublications[article.publication]) return false;
+    if (searchText) {
+      var haystack = (article.title + " " + article.description).toLowerCase();
+      if (haystack.indexOf(searchText) === -1) return false;
+    }
+    return true;
+  }
+
+  function articlesForTab(tab) {
+    return report.articles.filter(function (a) {
+      if (tab === "Educational") return a.educational;
+      if (report.regions.indexOf(tab) !== -1) return a.regions.indexOf(tab) !== -1;
+      return a.topic === tab;
+    });
+  }
+
+  // ---- Rendering -----------------------------------------------------------
+  function renderTabs() {
+    var nav = document.getElementById("tabs");
+    nav.innerHTML = "";
+    tabList().forEach(function (name) {
+      var count = name === "Same story"
+        ? report.stories.length
+        : articlesForTab(name).length;
+      var btn = el("button", "tab" + (name === activeTab ? " active" : ""));
+      btn.appendChild(el("span", "", name));
+      btn.appendChild(el("span", "badge", count));
+      btn.onclick = function () {
+        activeTab = name;
+        renderTabs();
+        renderContent();
+      };
+      nav.appendChild(btn);
+    });
+  }
+
+  function renderPublicationChips() {
+    var box = document.getElementById("pub-chips");
+    box.innerHTML = "";
+    report.publications.forEach(function (pub) {
+      var chip = el("button", "chip" + (hiddenPublications[pub] ? " off" : ""), pub);
+      chip.onclick = function () {
+        hiddenPublications[pub] = !hiddenPublications[pub];
+        renderPublicationChips();
+        renderContent();
+      };
+      box.appendChild(chip);
+    });
+  }
+
+  function articleCard(article, showTopic) {
+    var card = el("article", "card");
+
+    var meta = el("div", "meta");
+    meta.appendChild(el("span", "pub pub-" + slug(article.publication), article.publication));
+    if (article.section) meta.appendChild(el("span", "section", article.section));
+    if (showTopic && article.topic !== "Other") meta.appendChild(el("span", "topic", article.topic));
+    if (article.educational && activeTab !== "Educational") meta.appendChild(el("span", "tag", "Explainer"));
+    article.regions.forEach(function (r) {
+      if (r !== activeTab) meta.appendChild(el("span", "tag", r));
+    });
+    meta.appendChild(el("span", "time", article.published));
+    card.appendChild(meta);
+
+    var link = el("a", "title", article.title);
+    link.href = article.link;
+    link.target = "_blank";
+    link.rel = "noopener";
+    card.appendChild(link);
+
+    if (article.description) card.appendChild(el("p", "desc", article.description));
+    return card;
+  }
+
+  function renderContent() {
+    var content = document.getElementById("content");
+    content.innerHTML = "";
+
+    if (activeTab === "Same story") {
+      renderStories(content);
+      return;
+    }
+
+    var list = articlesForTab(activeTab).filter(isVisible).sort(byNewest);
+    if (list.length === 0) {
+      content.appendChild(el("p", "empty", "Nothing here."));
+      return;
+    }
+    var showTopic = activeTab === "Educational" || report.regions.indexOf(activeTab) !== -1;
+    list.forEach(function (a) { content.appendChild(articleCard(a, showTopic)); });
+  }
+
+  function renderStories(content) {
+    var byId = {};
+    report.articles.forEach(function (a) { byId[a.id] = a; });
+
+    var shown = 0;
+    report.stories.forEach(function (story) {
+      var members = story.article_ids.map(function (id) { return byId[id]; }).filter(isVisible).sort(byNewest);
+      if (members.length < 2) return;
+      shown += 1;
+
+      var group = el("section", "story");
+      var head = el("div", "story-head");
+      head.appendChild(el("span", "story-label", story.label));
+      head.appendChild(el("span", "story-count", members.length + " articles"));
+      group.appendChild(head);
+
+      members.forEach(function (a) {
+        var row = el("div", "story-row");
+        row.appendChild(el("span", "pub pub-" + slug(a.publication), a.publication));
+        var link = el("a", "story-title", a.title);
+        link.href = a.link;
+        link.target = "_blank";
+        link.rel = "noopener";
+        row.appendChild(link);
+        row.appendChild(el("span", "time", a.published));
+        group.appendChild(row);
+      });
+      content.appendChild(group);
+    });
+
+    if (shown === 0) content.appendChild(el("p", "empty", "No stories covered by more than one outlet."));
+  }
+
+  // ---- Wire up -------------------------------------------------------------
+  document.getElementById("refresh-btn").onclick = refreshNews;
+  document.getElementById("search").oninput = function (e) {
+    searchText = e.target.value.trim().toLowerCase();
+    renderContent();
+  };
+  loadArticles();
+</script>
+</body>
+</html>
