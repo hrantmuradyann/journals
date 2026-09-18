@@ -76,6 +76,24 @@ FEEDS = {
         "Middle East & Africa": "https://www.economist.com/middle-east-and-africa/rss.xml",
         "Science & Technology": "https://www.economist.com/science-and-technology/rss.xml",
     },
+    "The Guardian": {
+        "International": "https://www.theguardian.com/international/rss",
+        "World": "https://www.theguardian.com/world/rss",
+        "Business": "https://www.theguardian.com/uk/business/rss",
+        "Politics": "https://www.theguardian.com/politics/rss",
+        "Technology": "https://www.theguardian.com/uk/technology/rss",
+        "Opinion": "https://www.theguardian.com/uk/commentisfree/rss",
+        "Culture": "https://www.theguardian.com/uk/culture/rss",
+    },
+    "Le Monde": {
+        "Front Page": "https://www.lemonde.fr/en/rss/une.xml",
+        "International": "https://www.lemonde.fr/en/international/rss_full.xml",
+        "France": "https://www.lemonde.fr/en/france/rss_full.xml",
+        "Politics": "https://www.lemonde.fr/en/politics/rss_full.xml",
+        "Economy": "https://www.lemonde.fr/en/economy/rss_full.xml",
+        "Opinion": "https://www.lemonde.fr/en/opinion/rss_full.xml",
+        "Culture": "https://www.lemonde.fr/en/culture/rss_full.xml",
+    },
 }
 
 # Max articles taken from each individual feed
