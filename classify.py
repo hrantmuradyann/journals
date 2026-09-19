@@ -54,6 +54,15 @@ TOPICS = [
         "gang", "mafia", "cartel", "corruption", "scandal", "impeach", "constitution", "invasion",
         "attack", "strike", "bomb", "conflict", "hostage", "refugee", "humanitarian", "brexit",
         "westminster", "capitol", "mp", "mps", "chancellor", "cabinet", "coalition",
+        # "palestine" does not match "Palestinian" (the suffix rule only adds "ian" to the full
+        # word), and "un" is needed for "UN meeting" / "the UN" (Le Monde visa story, Economist
+        # secretary-general story)
+        "palestinian", "un", "secretary general", "state department", "visa", "von der leyen",
+        # crime / policing: Gladwell gun-violence piece, South African "maverick cop", Letby
+        # inquiry. "police" does not match "policing".
+        "gun", "shooting", "murder", "violence", "policing", "cop", "victim", "inquiry",
+        "prison", "jail", "inmate", "citizen", "propaganda", "islamist", "islamism",
+        "shadow chancellor", "shadow cabinet", "activist",
     ]),
     ("Companies & Finance", [
         "share", "shares", "stock", "stocks", "market", "markets", "earnings", "profit", "revenue",
@@ -76,6 +85,10 @@ TOPICS = [
         "berkshire", "buffett", "glencore", "goldman", "jpmorgan", "blackrock", "boeing", "airbus",
         "toyota", "volkswagen", "shell", "exxon", "walmart", "hsbc", "barclays", "ubs", "nestle",
         "nestlé",
+        # Economist "girl dad" managers piece and Ecuador prawn farmers piece; regulators probing
+        # companies (Bloomberg travel-platform probe was landing in Culture via "travel"/"hotel")
+        "manager", "hire", "hiring", "farm", "farmer", "agriculture", "probe", "antitrust",
+        "regulator", "regulation",
     ]),
     ("Science & Health", [
         "scientist", "science", "research", "researcher", "study", "health", "doctor", "hospital",
@@ -86,6 +99,7 @@ TOPICS = [
         "chemistry", "biology", "astronomy", "nasa", "mental health", "diet", "obesity", "sleep",
         "psychology", "measles", "fertility", "transplant", "surgery", "habitat", "soil",
         "environment", "environmental", "pollution", "nature", "forest", "river",
+        "vitamin", "nurse", "nutrition",
     ]),
     ("Culture & Lifestyle", [
         "review", "film", "movie", "cinema", "director", "actor", "novel", "novelist", "book",
@@ -101,7 +115,13 @@ TOPICS = [
         "royal", "monarchy", "prince", "king", "queen", "religion", "church", "history",
         "historian", "culture", "cultural", "lifestyle", "dating", "relationship", "podcast",
         "newsletter", "photograph", "photography", "architecture", "design", "literary", "prize",
-        "award", "longlist", "obituary", "died", "death",
+        "award", "longlist", "obituary",
+        # Obituaries: "dies aged 84", "has died". Bare "died"/"death" were here before but pulled
+        # a Nigerian prison-deaths story into Culture, so only the obituary phrasings remain.
+        "dies aged", "dies at", "has died",
+        # Sport (Zidane squad story), music (A$AP Rocky), classroom/academic (New Yorker gym piece)
+        "coach", "squad", "uefa", "world cup", "champions league", "premier league", "league",
+        "rapper", "hip hop", "classroom", "academic",
     ]),
 ]
 
@@ -190,7 +210,15 @@ newsletter cartoon live latest another other becoming become plan plans right le
 across along around behind beyond despite through toward without within enough every need needs
 help helps keep keeps look looks give gives find finds turn turns call calls own same real true
 never ever always often sometimes something anything nothing everything global
+announce announces announced announcing administration market markets stock stocks since
+highest lowest record records threat threats threatens threatened public service services
+issue issues order orders ordered sign signs signed
+trump trumps
 """.split())
+# The stop-word check runs on the raw word, before stemming, so each form is listed separately.
+# "trump" is a stop word because it is in so many titles that it chained unrelated stories
+# ("Oil Prices ... Trump's Iran War" + "Trump ... Medicaid Drug Prices"). Real Trump stories
+# still group on their other words (greenland/security/deal, politico/barred/white).
 
 # A shared title word only "counts" as strong evidence if it appears in at most this many titles.
 RARE_MAX = 6
@@ -253,7 +281,8 @@ def load_articles(xlsx_path):
         rows = sheet.iter_rows(values_only=True)
         next(rows, None)  # header row
         for row in rows:
-            section, title, description, link, published = (list(row) + [None] * 5)[:5]
+            # Author is a 6th column added later; older spreadsheets simply lack it
+            section, title, description, link, published, author = (list(row) + [None] * 6)[:6]
             title = (title or "").strip()
             link = (link or "").strip()
             if not title:
@@ -271,6 +300,7 @@ def load_articles(xlsx_path):
                 "description": (description or "").strip(),
                 "link": link,
                 "published": published or "",
+                "author": (author or "").strip(),
             })
     workbook.close()
     return articles

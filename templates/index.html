@@ -27,7 +27,7 @@
   <nav class="tabs" id="tabs"></nav>
 
   <div class="toolbar">
-    <input type="search" id="search" placeholder="Search headlines and descriptions…" autocomplete="off">
+    <input type="search" id="search" placeholder="Search headlines, descriptions and authors…" autocomplete="off">
     <div class="chips" id="pub-chips"></div>
   </div>
 
@@ -121,7 +121,7 @@
   function isVisible(article) {
     if (hiddenPublications[article.publication]) return false;
     if (searchText) {
-      var haystack = (article.title + " " + article.description).toLowerCase();
+      var haystack = (article.title + " " + article.description + " " + article.author).toLowerCase();
       if (haystack.indexOf(searchText) === -1) return false;
     }
     return true;
@@ -174,6 +174,7 @@
 
     var meta = el("div", "meta");
     meta.appendChild(el("span", "pub pub-" + slug(article.publication), article.publication));
+    if (article.author) meta.appendChild(el("span", "author", "By " + article.author));
     if (article.section) meta.appendChild(el("span", "section", article.section));
     if (showTopic && article.topic !== "Other") meta.appendChild(el("span", "topic", article.topic));
     if (article.educational && activeTab !== "Educational") meta.appendChild(el("span", "tag", "Explainer"));
@@ -189,8 +190,16 @@
     link.rel = "noopener";
     card.appendChild(link);
 
-    if (article.description) card.appendChild(el("p", "desc", article.description));
+    if (article.description) card.appendChild(descriptionEl(article.description));
     return card;
+  }
+
+  // Descriptions are cut to two lines; clicking one shows the full text.
+  function descriptionEl(text) {
+    var p = el("p", "desc", text);
+    p.title = "Click to expand";
+    p.onclick = function () { p.classList.toggle("expanded"); };
+    return p;
   }
 
   function renderContent() {
@@ -230,11 +239,17 @@
       members.forEach(function (a) {
         var row = el("div", "story-row");
         row.appendChild(el("span", "pub pub-" + slug(a.publication), a.publication));
+
+        var body = el("div", "story-body");
         var link = el("a", "story-title", a.title);
         link.href = a.link;
         link.target = "_blank";
         link.rel = "noopener";
-        row.appendChild(link);
+        body.appendChild(link);
+        if (a.author) body.appendChild(el("span", "author", "By " + a.author));
+        if (a.description) body.appendChild(descriptionEl(a.description));
+        row.appendChild(body);
+
         row.appendChild(el("span", "time", a.published));
         group.appendChild(row);
       });

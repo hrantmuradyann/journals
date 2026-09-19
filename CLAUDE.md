@@ -11,7 +11,7 @@ Sorting is done with **plain keyword rules only** in `classify.py` — no LLM, n
 
 | File | Role |
 |---|---|
-| `news_rss.py` | Fetches feeds → `news_articles.xlsx` (one sheet per publication, columns: Section, Title, Description, Link, Published (GMT+4)). `FEEDS` dict at top. Runs standalone. |
+| `news_rss.py` | Fetches feeds → `news_articles.xlsx` (one sheet per publication, columns: Section, Title, Description, Link, Published (GMT+4), Author). Author comes from `<dc:creator>` / Atom `<author>`; FT, The Economist and Le Monde feeds have none. `FEEDS` dict at top. Runs standalone. |
 | `classify.py` | Loads the xlsx, dedups, assigns one **topic** per article, adds **tags** (Educational, regions such as Asia), and groups **same-story** articles across outlets. All keyword lists are at the top. `python3 classify.py` prints counts. |
 | `app.py` | Flask: `GET /` page, `POST /refresh` runs `news_rss.py`, `GET /articles` returns `classify.build_report()` as JSON. |
 | `templates/index.html`, `static/style.css` | The page. Vanilla JS, no build step. Tabs / search / publication chips are all client-side filters over the one `/articles` payload. |
@@ -43,10 +43,10 @@ The user will regularly hand over new `news_articles.xlsx` files (or point at th
    Same pattern for `a['educational']`, `a['regions']`, or `r['stories']`.
 2. Look for: articles in **Other** that clearly belong somewhere (missing keyword), articles in the **wrong topic** (over-broad keyword — remove it or make it multi-word), Educational false positives, junk same-story groups (add the shared filler word to `STOP_WORDS`).
 3. Edit the lists at the top of `classify.py`, re-run, compare counts. Keep changes small and explain which articles motivated each keyword.
-4. Words already tried and **removed on purpose** because they matched too much: `state`, `eu` (hit "EU-wide"), `leadership`, `economist` (the paper's name), bare `million/billion/trillion`, bare `"how "`/`explain`/`understand` for Educational.
+4. Words already tried and **removed on purpose** because they matched too much: `state`, `eu` (hit "EU-wide"), `leadership`, `economist` (the paper's name), bare `million/billion/trillion`, bare `died`/`death` in Culture (pulled in prison-death stories; obituary phrasings `dies aged`/`has died` stay), bare `"how "`/`explain`/`understand` for Educational.
 5. Reasonable target on ~500 unique articles: Other ≲ 30, Educational ≈ 30–50, each same-story group genuinely about one event.
 
-If the user sends an xlsx with a different layout, `load_articles` expects the columns above in that order and one sheet per publication; adapt there, not elsewhere.
+If the user sends an xlsx with a different layout, `load_articles` expects the columns above in that order (Author optional) and one sheet per publication; adapt there, not elsewhere.
 
 ## Style
 

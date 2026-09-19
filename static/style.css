@@ -188,6 +188,7 @@ h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
   background: #eef0f3;
 }
 .section { color: var(--muted); }
+.author { color: var(--text); font-style: italic; }
 .topic, .tag {
   padding: 1px 7px;
   border-radius: 4px;
@@ -215,7 +216,10 @@ h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  cursor: pointer;
 }
+/* Clicking a description removes the two-line limit */
+.desc.expanded { display: block; -webkit-line-clamp: unset; }
 
 .empty { color: var(--muted); text-align: center; padding: 40px 0; }
 
@@ -249,9 +253,12 @@ h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
   font-size: 15px;
 }
 .story-row .pub { font-size: 12px; flex-shrink: 0; }
-.story-title { text-decoration: none; }
+.story-body { flex: 1 1 auto; min-width: 0; }
+.story-title { text-decoration: none; font-weight: 500; }
 .story-title:hover { color: var(--accent); }
-.story-row .time { font-size: 12px; color: var(--muted); }
+.story-body .author { display: block; font-size: 12px; margin-top: 2px; }
+.story-body .desc { margin-top: 2px; font-size: 13px; }
+.story-row .time { font-size: 12px; color: var(--muted); flex-shrink: 0; margin-left: auto; }
 
 /* ---- Publication colours ------------------------------------------------ */
 
