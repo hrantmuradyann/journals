@@ -5,6 +5,7 @@ import html
 import os
 import re
 import sys
+import time
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
@@ -99,6 +100,12 @@ FEEDS = {
 # Max articles taken from each individual feed
 MAX_ARTICLES = 10
 
+# Bloomberg's feed server either answers within ~5 seconds or hangs forever (measured: a
+# request that hasn't answered by 10 s never does). So use a short timeout and simply try
+# again several times; a feed is only skipped after every attempt has failed.
+FETCH_ATTEMPTS = 5
+FETCH_TIMEOUT_SECONDS = 10
+
 # Time zone to show publish dates in (GMT+4)
 LOCAL_TZ = timezone(timedelta(hours=4))
 
@@ -111,6 +118,9 @@ USER_AGENT = (
 )
 
 ATOM_NS = "{http://www.w3.org/2005/Atom}"
+# Most RSS feeds put the byline in <dc:creator> (WSJ, NYT, Bloomberg, Guardian, New Yorker).
+# FT, The Economist and Le Monde do not include authors in their feeds at all.
+DC_NS = "{http://purl.org/dc/elements/1.1/}"
 
 
 def clean_text(text):
@@ -144,19 +154,22 @@ def to_local_time(published):
 
 
 def parse_rss(root):
-    """Parse an RSS 2.0 document into a list of (title, description, link, published)."""
+    """Parse an RSS 2.0 document into a list of (title, description, link, published, author)."""
     articles = []
     for item in root.iter("item"):
         title = clean_text(item.findtext("title"))
         description = clean_text(item.findtext("description"))
         link = (item.findtext("link") or "").strip()
         published = to_local_time((item.findtext("pubDate") or "").strip())
-        articles.append((title, description, link, published))
+        author = clean_text(item.findtext(DC_NS + "creator"))
+        if not author:
+            author = clean_text(item.findtext("author"))
+        articles.append((title, description, link, published, author))
     return articles
 
 
 def parse_atom(root):
-    """Parse an Atom document into a list of (title, description, link, published)."""
+    """Parse an Atom document into a list of (title, description, link, published, author)."""
     articles = []
     for entry in root.iter(ATOM_NS + "entry"):
         title = clean_text(entry.findtext(ATOM_NS + "title"))
@@ -170,16 +183,29 @@ def parse_atom(root):
                 break
         published = entry.findtext(ATOM_NS + "published") or entry.findtext(ATOM_NS + "updated") or ""
         published = to_local_time(published.strip())
-        articles.append((title, description, link, published))
+        author = clean_text(entry.findtext(ATOM_NS + "author/" + ATOM_NS + "name"))
+        articles.append((title, description, link, published, author))
     return articles
 
 
-def fetch_feed(url):
-    """Download a feed and return a list of (title, description, link, published) tuples."""
+def download(url):
+    """Download a URL, retrying a few times because feed servers can be slow."""
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(request, timeout=20) as response:
-        data = response.read()
+    last_error = None
+    for attempt in range(FETCH_ATTEMPTS):
+        try:
+            with urllib.request.urlopen(request, timeout=FETCH_TIMEOUT_SECONDS) as response:
+                return response.read()
+        except Exception as error:
+            last_error = error
+            if attempt < FETCH_ATTEMPTS - 1:
+                time.sleep(2)
+    raise last_error
 
+
+def fetch_feed(url):
+    """Download a feed and return a list of (title, description, link, published, author) tuples."""
+    data = download(url)
     root = ET.fromstring(data)
     if root.tag == ATOM_NS + "feed":
         return parse_atom(root)
@@ -193,7 +219,7 @@ def main():
     total = 0
     for publication, sections in FEEDS.items():
         sheet = workbook.create_sheet(title=publication)
-        sheet.append(["Section", "Title", "Description", "Link", "Published (GMT+4)"])
+        sheet.append(["Section", "Title", "Description", "Link", "Published (GMT+4)", "Author"])
         for cell in sheet[1]:
             cell.font = Font(bold=True)
 
@@ -204,8 +230,8 @@ def main():
                 print(f"Could not fetch {publication} / {section}: {error}", file=sys.stderr)
                 continue
 
-            for title, description, link, published in articles[:MAX_ARTICLES]:
-                sheet.append([section, title, description, link, published])
+            for title, description, link, published, author in articles[:MAX_ARTICLES]:
+                sheet.append([section, title, description, link, published, author])
                 link_cell = sheet.cell(row=sheet.max_row, column=4)
                 link_cell.hyperlink = link
                 link_cell.font = Font(color="0563C1", underline="single")
@@ -216,6 +242,7 @@ def main():
         sheet.column_dimensions["C"].width = 90
         sheet.column_dimensions["D"].width = 60
         sheet.column_dimensions["E"].width = 20
+        sheet.column_dimensions["F"].width = 30
         print(f"{publication}: {sheet.max_row - 1} articles")
 
     # Always write to the same file so each run replaces the previous one
