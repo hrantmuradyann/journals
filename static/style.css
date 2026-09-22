@@ -66,6 +66,27 @@ h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
 .btn-primary:hover { filter: brightness(1.08); }
 .btn-primary:disabled { opacity: 0.7; cursor: default; }
 
+.topbar-actions { display: flex; align-items: center; gap: 10px; }
+
+/* "Read" button next to the fetch button; highlighted while the reading history is open */
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+.btn-secondary.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-secondary.active .badge { background: rgba(255, 255, 255, 0.25); color: #fff; }
+
 .spinner {
   width: 14px;
   height: 14px;
@@ -159,6 +180,7 @@ h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
   cursor: pointer;
 }
 .chip.off { opacity: 0.4; text-decoration: line-through; }
+.chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 /* ---- Article cards ------------------------------------------------------ */
 
@@ -223,6 +245,102 @@ h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
 
 .empty { color: var(--muted); text-align: center; padding: 40px 0; }
 
+/* ---- Reading history ---------------------------------------------------- */
+
+/* The "+" on the right of a card / story row; "✓" once the article is marked read */
+.read-btn {
+  width: 26px;
+  height: 26px;
+  margin-left: 8px;
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--accent);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+.read-btn:hover { border-color: var(--accent); }
+.read-btn.done { background: var(--accent); border-color: var(--accent); color: #fff; }
+.card.read, .story-row.read { opacity: 0.6; }
+
+.read-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 20px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.read-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.read-group-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-right: 4px;
+}
+
+/* Filter chips carry a small count; the active chip takes the colour of its rating */
+.rating-chip { display: inline-flex; align-items: center; gap: 6px; }
+.chip-count { font-size: 11px; color: var(--muted); }
+.chip.active .chip-count { color: inherit; opacity: 0.8; }
+.rating-chip.great.active { background: var(--good); color: var(--good-text); border-color: var(--good-text); }
+.rating-chip.normal.active { background: #e0e7ff; color: #3730a3; border-color: #3730a3; }
+.rating-chip.hard.active { background: #fef3c7; color: #92400e; border-color: #92400e; }
+.rating-chip.bad.active { background: var(--bad); color: var(--bad-text); border-color: var(--bad-text); }
+
+/* Sort control: one pill split into segments */
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--bg);
+}
+.segment {
+  padding: 5px 12px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.segment + .segment { border-left: 1px solid var(--line); }
+.segment:hover { color: var(--text); }
+.segment.active { background: var(--accent); color: #fff; }
+
+.rating {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+.rating-btn {
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.rating-btn.great.active { background: var(--good); color: var(--good-text); border-color: var(--good-text); }
+.rating-btn.normal.active { background: #e0e7ff; color: #3730a3; border-color: #3730a3; }
+.rating-btn.hard.active { background: #fef3c7; color: #92400e; border-color: #92400e; }
+.rating-btn.bad.active { background: var(--bad); color: var(--bad-text); border-color: var(--bad-text); }
+.read-on { margin-left: auto; color: var(--muted); }
+
 /* ---- Same-story groups -------------------------------------------------- */
 
 .story {
@@ -271,12 +389,15 @@ h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
 .pub-the-economist { background: #fee2e2; color: #b91c1c; }
 .pub-the-guardian { background: #dbeafe; color: #1e3a8a; }
 .pub-le-monde { background: #dcfce7; color: #14532d; }
+.pub-semafor { background: #fef9c3; color: #713f12; }
 
 /* ---- Small screens ------------------------------------------------------ */
 
 @media (max-width: 640px) {
   .topbar-inner { flex-direction: column; align-items: stretch; }
-  .btn-primary { justify-content: center; }
+  .topbar-actions { flex-direction: column; align-items: stretch; }
+  .btn-primary, .btn-secondary { justify-content: center; }
+  .read-toolbar { flex-direction: column; align-items: stretch; }
   .time { margin-left: 0; }
   .story-row { flex-wrap: wrap; }
 }

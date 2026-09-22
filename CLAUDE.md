@@ -2,9 +2,11 @@
 
 ## What this is
 
-A personal news digest. `news_rss.py` downloads recent articles from ~9 publications' RSS feeds into
+A personal news digest. `news_rss.py` downloads recent articles from ~10 publications' RSS feeds into
 `news_articles.xlsx`; `app.py` is a tiny Flask website (http://127.0.0.1:5000) with one
 "Check latest news" button that runs the fetch script and shows the articles sorted into tabs.
+Articles can be marked read with the `+` on each card and rated Great / Normal / Hard / Bad in the "Read" view (button in the header);
+that history lives in `reading_history.json` (keyed by article link, no accounts).
 Sorting is done with **plain keyword rules only** in `classify.py` — no LLM, no API, no ML. Keep it that way.
 
 ## Files
@@ -13,9 +15,10 @@ Sorting is done with **plain keyword rules only** in `classify.py` — no LLM, n
 |---|---|
 | `news_rss.py` | Fetches feeds → `news_articles.xlsx` (one sheet per publication, columns: Section, Title, Description, Link, Published (GMT+4), Author). Author comes from `<dc:creator>` / Atom `<author>`; FT, The Economist and Le Monde feeds have none. `FEEDS` dict at top. Runs standalone. |
 | `classify.py` | Loads the xlsx, dedups, assigns one **topic** per article, adds **tags** (Educational, regions such as Asia), and groups **same-story** articles across outlets. All keyword lists are at the top. `python3 classify.py` prints counts. |
-| `app.py` | Flask: `GET /` page, `POST /refresh` runs `news_rss.py`, `GET /articles` returns `classify.build_report()` as JSON. |
+| `app.py` | Flask: `GET /` page, `POST /refresh` runs `news_rss.py`, `GET /articles` returns `classify.build_report()` as JSON. Reading history: `GET /history`, `POST /history/add` (article snapshot), `POST /history/rate` (`{link, rating}`), `POST /history/remove` (`{link}`); writes go through a lock + temp-file rename. Templates are cached (debug off) — restart after editing `index.html`. |
 | `templates/index.html`, `static/style.css` | The page. Vanilla JS, no build step. Tabs / search / publication chips are all client-side filters over the one `/articles` payload. |
 | `news_articles.xlsx` | Generated output, overwritten on every fetch. Git-tracked but treat as data, not code. |
+| `reading_history.json` | Read articles + ratings, keyed by link. Stores a snapshot of each article (title, description, publication…) because the xlsx is overwritten each fetch and `article.id` is just a row index. Data, not code. |
 
 Run: `pip3 install -r requirements.txt` then `python3 app.py`. Python is `/usr/bin/python3` (3.9) — avoid 3.10+ syntax (`match`, `X | Y` types).
 
