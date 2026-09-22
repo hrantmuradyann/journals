@@ -14,10 +14,16 @@
       <h1>News Digest</h1>
       <p class="subtitle" id="status">Loading…</p>
     </div>
-    <button id="refresh-btn" class="btn-primary">
-      <span class="spinner" hidden></span>
-      <span class="btn-label">Check latest news</span>
-    </button>
+    <div class="topbar-actions">
+      <button id="read-btn" class="btn-secondary" title="Articles you marked as read">
+        <span class="btn-label">Read</span>
+        <span class="badge" id="read-count">0</span>
+      </button>
+      <button id="refresh-btn" class="btn-primary">
+        <span class="spinner" hidden></span>
+        <span class="btn-label">Check latest news</span>
+      </button>
+    </div>
   </div>
 </header>
 
@@ -40,6 +46,11 @@
   var activeTab = "Same story";
   var hiddenPublications = {};       // publication name -> true when hidden
   var searchText = "";
+  var readHistory = {};                  // link -> read-article entry (from /history). Not named "history": window.history is the browser API
+  var readFilter = "all";            // Read view: all | one of RATINGS | unrated
+  var readSort = "read_at";          // Read view: read_at | rating | published
+  var RATINGS = ["great", "normal", "hard", "bad"];
+  var lastTab = "Same story";        // tab to return to when leaving the Read view
 
   // Tab order shown in the page. Topic and region names come from the server.
   function tabList() {
@@ -51,6 +62,13 @@
   }
 
   // ---- Loading -------------------------------------------------------------
+  function loadHistory() {
+    return fetch("/history")
+      .then(function (r) { return r.json(); })
+      .then(function (data) { readHistory = data.articles || {}; })
+      .catch(function (err) { showMessage("Could not load reading history: " + err, false); });
+  }
+
   function loadArticles() {
     setStatus("Loading…");
     fetch("/articles")
@@ -153,6 +171,26 @@
       };
       nav.appendChild(btn);
     });
+    renderReadButton();
+  }
+
+  // The "Read" button in the header opens the reading history in place of the tabs' content;
+  // clicking it again (or any tab) goes back to the news.
+  function renderReadButton() {
+    var btn = document.getElementById("read-btn");
+    btn.className = "btn-secondary" + (activeTab === "Read" ? " active" : "");
+    document.getElementById("read-count").textContent = Object.keys(readHistory).length;
+  }
+
+  function toggleReadView() {
+    if (activeTab === "Read") {
+      activeTab = lastTab;
+    } else {
+      lastTab = activeTab;
+      activeTab = "Read";
+    }
+    renderTabs();
+    renderContent();
   }
 
   function renderPublicationChips() {
@@ -170,7 +208,7 @@
   }
 
   function articleCard(article, showTopic) {
-    var card = el("article", "card");
+    var card = el("article", "card" + (readHistory[article.link] ? " read" : ""));
 
     var meta = el("div", "meta");
     meta.appendChild(el("span", "pub pub-" + slug(article.publication), article.publication));
@@ -182,6 +220,7 @@
       if (r !== activeTab) meta.appendChild(el("span", "tag", r));
     });
     meta.appendChild(el("span", "time", article.published));
+    meta.appendChild(readButton(article));
     card.appendChild(meta);
 
     var link = el("a", "title", article.title);
@@ -208,6 +247,10 @@
 
     if (activeTab === "Same story") {
       renderStories(content);
+      return;
+    }
+    if (activeTab === "Read") {
+      renderRead(content);
       return;
     }
 
@@ -237,7 +280,7 @@
       group.appendChild(head);
 
       members.forEach(function (a) {
-        var row = el("div", "story-row");
+        var row = el("div", "story-row" + (readHistory[a.link] ? " read" : ""));
         row.appendChild(el("span", "pub pub-" + slug(a.publication), a.publication));
 
         var body = el("div", "story-body");
@@ -251,6 +294,7 @@
         row.appendChild(body);
 
         row.appendChild(el("span", "time", a.published));
+        row.appendChild(readButton(a));
         group.appendChild(row);
       });
       content.appendChild(group);
@@ -259,13 +303,165 @@
     if (shown === 0) content.appendChild(el("p", "empty", "No stories covered by more than one outlet."));
   }
 
+  // ---- Reading history -----------------------------------------------------
+  function postJson(url, body) {
+    return fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    }).then(function (r) { return r.json(); });
+  }
+
+  // The "+" on the right of a card: marks the article as read, "✓" when it already is.
+  function readButton(article) {
+    var isRead = !!readHistory[article.link];
+    var btn = el("button", "read-btn" + (isRead ? " done" : ""), isRead ? "\u2713" : "+");
+    btn.title = isRead ? "Read \u2014 click to remove from history" : "Mark as read";
+    btn.onclick = function () { toggleRead(article); };
+    return btn;
+  }
+
+  function toggleRead(article) {
+    if (readHistory[article.link]) {
+      postJson("/history/remove", { link: article.link })
+        .then(function () {
+          delete readHistory[article.link];
+          renderTabs();
+          renderContent();
+        })
+        .catch(function (err) { showMessage("Could not update history: " + err, false); });
+      return;
+    }
+    // Send a snapshot of the article: the spreadsheet is overwritten on every fetch, so
+    // this is the only copy the Read tab can show later.
+    var snapshot = {
+      link: article.link,
+      title: article.title,
+      description: article.description,
+      publication: article.publication,
+      section: article.section,
+      author: article.author,
+      published: article.published,
+      topic: article.topic
+    };
+    postJson("/history/add", snapshot)
+      .then(function (data) {
+        if (!data.ok) { showMessage(data.message, false); return; }
+        readHistory[article.link] = data.entry;
+        renderTabs();
+        renderContent();
+      })
+      .catch(function (err) { showMessage("Could not update history: " + err, false); });
+  }
+
+  function setRating(entry, rating) {
+    // Clicking the rating that is already set clears it
+    if (entry.rating === rating) rating = null;
+    postJson("/history/rate", { link: entry.link, rating: rating })
+      .then(function (data) {
+        if (!data.ok) { showMessage(data.message, false); return; }
+        readHistory[entry.link].rating = rating;
+        renderContent();
+      })
+      .catch(function (err) { showMessage("Could not save rating: " + err, false); });
+  }
+
+  function ratingLabel(rating) {
+    return rating.charAt(0).toUpperCase() + rating.slice(1);
+  }
+
+  // Sort order used by "Rating": great, normal, hard, bad, then unrated
+  function ratingRank(rating) {
+    var i = RATINGS.indexOf(rating);
+    return i === -1 ? RATINGS.length : i;
+  }
+
+  function byReadAt(a, b) { return a.read_at < b.read_at ? 1 : a.read_at > b.read_at ? -1 : 0; }
+  function byRating(a, b) {
+    var diff = ratingRank(a.rating) - ratingRank(b.rating);
+    return diff !== 0 ? diff : byReadAt(a, b);
+  }
+
+  function matchesFilter(entry, filter) {
+    if (filter === "all") return true;
+    if (filter === "unrated") return !entry.rating;
+    return entry.rating === filter;
+  }
+
+  function renderRead(content) {
+    var entries = Object.keys(readHistory).map(function (link) { return readHistory[link]; });
+
+    if (entries.length === 0) {
+      content.appendChild(el("p", "empty", "Nothing marked as read yet \u2014 click + on an article."));
+      return;
+    }
+
+    // Toolbar: rating filter chips (with counts) on the left, sort buttons on the right
+    var toolbar = el("div", "read-toolbar");
+
+    var filterGroup = el("div", "read-group");
+    filterGroup.appendChild(el("span", "read-group-label", "Show"));
+    var filters = [["all", "All"]];
+    RATINGS.forEach(function (r) { filters.push([r, ratingLabel(r)]); });
+    filters.push(["unrated", "Unrated"]);
+    filters.forEach(function (f) {
+      var count = entries.filter(function (e) { return matchesFilter(e, f[0]); }).length;
+      var chip = el("button", "chip rating-chip " + f[0] + (readFilter === f[0] ? " active" : ""), f[1]);
+      chip.appendChild(el("span", "chip-count", count));
+      chip.onclick = function () { readFilter = f[0]; renderContent(); };
+      filterGroup.appendChild(chip);
+    });
+    toolbar.appendChild(filterGroup);
+
+    var sortGroup = el("div", "read-group");
+    sortGroup.appendChild(el("span", "read-group-label", "Sort by"));
+    var segmented = el("div", "segmented");
+    [["read_at", "Date read"], ["rating", "Rating"], ["published", "Published"]].forEach(function (o) {
+      var btn = el("button", "segment" + (readSort === o[0] ? " active" : ""), o[1]);
+      btn.onclick = function () { readSort = o[0]; renderContent(); };
+      segmented.appendChild(btn);
+    });
+    sortGroup.appendChild(segmented);
+    toolbar.appendChild(sortGroup);
+    content.appendChild(toolbar);
+
+    var list = entries.filter(function (e) { return matchesFilter(e, readFilter); }).filter(isVisible);
+
+    if (readSort === "rating") list.sort(byRating);
+    else if (readSort === "published") list.sort(byNewest);
+    else list.sort(byReadAt);
+
+    if (list.length === 0) {
+      content.appendChild(el("p", "empty", "Nothing here."));
+      return;
+    }
+
+    list.forEach(function (entry) {
+      // Saved entries lack the tag fields the card expects
+      entry.regions = entry.regions || [];
+      entry.educational = false;
+      var card = articleCard(entry, true);
+
+      var rating = el("div", "rating");
+      RATINGS.forEach(function (r) {
+        var btn = el("button", "rating-btn " + r + (entry.rating === r ? " active" : ""), ratingLabel(r));
+        btn.onclick = function () { setRating(entry, r); };
+        rating.appendChild(btn);
+      });
+      rating.appendChild(el("span", "read-on", "Read on " + entry.read_at));
+      card.appendChild(rating);
+      content.appendChild(card);
+    });
+  }
+
   // ---- Wire up -------------------------------------------------------------
   document.getElementById("refresh-btn").onclick = refreshNews;
+  document.getElementById("read-btn").onclick = toggleReadView;
   document.getElementById("search").oninput = function (e) {
     searchText = e.target.value.trim().toLowerCase();
     renderContent();
   };
-  loadArticles();
+  loadHistory().then(loadArticles);
 </script>
 </body>
 </html>

@@ -16,6 +16,9 @@ from openpyxl.styles import Font
 
 # Each publication gets its own sheet in the Excel file.
 # Inside a publication, each entry is  "Section name": "feed url".
+# A section can also be  "Section name": ("feed url", "Category")  when a publication has only
+# one combined feed whose items carry a <category> tag - then only items with that category
+# are kept for the section. The feed is downloaded once and reused for every section.
 FEEDS = {
     "WSJ": {
         "World News": "https://feeds.content.dowjones.io/public/rss/RSSWorldNews",
@@ -95,6 +98,17 @@ FEEDS = {
         "Opinion": "https://www.lemonde.fr/en/opinion/rss_full.xml",
         "Culture": "https://www.lemonde.fr/en/culture/rss_full.xml",
     },
+    # Semafor has a single feed for everything; items are tagged with a category.
+    "Semafor": {
+        "Politics": ("https://www.semafor.com/rss.xml", "Politics"),
+        "Business": ("https://www.semafor.com/rss.xml", "Business"),
+        "Technology": ("https://www.semafor.com/rss.xml", "Technology"),
+        "Gulf": ("https://www.semafor.com/rss.xml", "Gulf"),
+        "Africa": ("https://www.semafor.com/rss.xml", "Africa"),
+        "China": ("https://www.semafor.com/rss.xml", "China"),
+        "Energy": ("https://www.semafor.com/rss.xml", "Energy"),
+        "Security": ("https://www.semafor.com/rss.xml", "Security"),
+    },
 }
 
 # Max articles taken from each individual feed
@@ -154,7 +168,7 @@ def to_local_time(published):
 
 
 def parse_rss(root):
-    """Parse an RSS 2.0 document into a list of (title, description, link, published, author)."""
+    """Parse an RSS 2.0 document into a list of (title, description, link, published, author, category)."""
     articles = []
     for item in root.iter("item"):
         title = clean_text(item.findtext("title"))
@@ -164,12 +178,13 @@ def parse_rss(root):
         author = clean_text(item.findtext(DC_NS + "creator"))
         if not author:
             author = clean_text(item.findtext("author"))
-        articles.append((title, description, link, published, author))
+        category = clean_text(item.findtext("category"))
+        articles.append((title, description, link, published, author, category))
     return articles
 
 
 def parse_atom(root):
-    """Parse an Atom document into a list of (title, description, link, published, author)."""
+    """Parse an Atom document into a list of (title, description, link, published, author, category)."""
     articles = []
     for entry in root.iter(ATOM_NS + "entry"):
         title = clean_text(entry.findtext(ATOM_NS + "title"))
@@ -184,7 +199,11 @@ def parse_atom(root):
         published = entry.findtext(ATOM_NS + "published") or entry.findtext(ATOM_NS + "updated") or ""
         published = to_local_time(published.strip())
         author = clean_text(entry.findtext(ATOM_NS + "author/" + ATOM_NS + "name"))
-        articles.append((title, description, link, published, author))
+        category = ""
+        category_tag = entry.find(ATOM_NS + "category")
+        if category_tag is not None:
+            category = clean_text(category_tag.get("term"))
+        articles.append((title, description, link, published, author, category))
     return articles
 
 
@@ -203,13 +222,23 @@ def download(url):
     raise last_error
 
 
+# Feeds already downloaded during this run, so a combined feed used by several sections
+# (see Semafor) is only fetched once.
+_feed_cache = {}
+
+
 def fetch_feed(url):
-    """Download a feed and return a list of (title, description, link, published, author) tuples."""
+    """Download a feed and return a list of (title, description, link, published, author, category) tuples."""
+    if url in _feed_cache:
+        return _feed_cache[url]
     data = download(url)
     root = ET.fromstring(data)
     if root.tag == ATOM_NS + "feed":
-        return parse_atom(root)
-    return parse_rss(root)
+        articles = parse_atom(root)
+    else:
+        articles = parse_rss(root)
+    _feed_cache[url] = articles
+    return articles
 
 
 def main():
@@ -223,14 +252,21 @@ def main():
         for cell in sheet[1]:
             cell.font = Font(bold=True)
 
-        for section, url in sections.items():
+        for section, feed in sections.items():
+            if isinstance(feed, tuple):
+                url, category_filter = feed
+            else:
+                url, category_filter = feed, None
             try:
                 articles = fetch_feed(url)
             except Exception as error:
                 print(f"Could not fetch {publication} / {section}: {error}", file=sys.stderr)
                 continue
 
-            for title, description, link, published, author in articles[:MAX_ARTICLES]:
+            if category_filter is not None:
+                articles = [a for a in articles if a[5] == category_filter]
+
+            for title, description, link, published, author, category in articles[:MAX_ARTICLES]:
                 sheet.append([section, title, description, link, published, author])
                 link_cell = sheet.cell(row=sheet.max_row, column=4)
                 link_cell.hyperlink = link

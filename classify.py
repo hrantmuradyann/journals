@@ -150,6 +150,11 @@ SECTION_BONUS = {
     "Asia": {"Big Political Events": 1},
     "China": {"Big Political Events": 1},
     "Leaders": {"Big Political Events": 1},
+    # Semafor's regional / thematic categories (its single feed is split by <category>)
+    "Gulf": {"Big Political Events": 1},
+    "Africa": {"Big Political Events": 1},
+    "Security": {"Big Political Events": 1},
+    "Energy": {"Companies & Finance": 1},
     "Culture": {"Culture & Lifestyle": 2},
     "Arts & Culture": {"Culture & Lifestyle": 2},
     "Lifestyle": {"Culture & Lifestyle": 2},
