@@ -3,31 +3,27 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>News Digest</title>
+  <title>Journals</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 
-<header class="topbar">
-  <div class="topbar-inner">
-    <div>
-      <h1>News Digest</h1>
-      <p class="subtitle" id="status">Loading…</p>
-    </div>
-    <div class="topbar-actions">
-      <button id="read-btn" class="btn-secondary" title="Articles you marked as read">
-        <span class="btn-label">Read</span>
-        <span class="badge" id="read-count">0</span>
-      </button>
-      <button id="refresh-btn" class="btn-primary">
-        <span class="spinner" hidden></span>
-        <span class="btn-label">Check latest news</span>
-      </button>
-    </div>
-  </div>
-</header>
-
 <main class="container">
+  <div class="actionbar">
+    <p class="status" id="status">Loading…</p>
+    <button id="calendar-btn" class="btn-secondary" title="Calendar of what you read">
+      <span class="btn-label">Calendar</span>
+    </button>
+    <button id="read-btn" class="btn-secondary" title="Articles you marked as read">
+      <span class="btn-label">Read</span>
+      <span class="badge" id="read-count">0</span>
+    </button>
+    <button id="refresh-btn" class="btn-primary">
+      <span class="spinner" hidden></span>
+      <span class="btn-label">Check latest news</span>
+    </button>
+  </div>
+
   <div id="message" class="message" hidden></div>
 
   <nav class="tabs" id="tabs"></nav>
@@ -50,7 +46,13 @@
   var readFilter = "all";            // Read view: all | one of RATINGS | unrated
   var readSort = "read_at";          // Read view: read_at | rating | published
   var RATINGS = ["great", "normal", "hard", "bad"];
-  var lastTab = "Same story";        // tab to return to when leaving the Read view
+  var lastTab = "Same story";        // tab to return to when leaving the Read / Calendar views
+  var calYear = null;                // Calendar view: month on screen (set on first open)
+  var calMonth = null;               // 0-11
+  var calSelectedDay = null;         // "YYYY-MM-DD" of the clicked day, or null
+  var MONTH_NAMES = ["January", "February", "March", "April", "May", "June",
+                     "July", "August", "September", "October", "November", "December"];
+  var WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
   // Tab order shown in the page. Topic and region names come from the server.
   function tabList() {
@@ -171,23 +173,26 @@
       };
       nav.appendChild(btn);
     });
-    renderReadButton();
+    renderViewButtons();
   }
 
-  // The "Read" button in the header opens the reading history in place of the tabs' content;
-  // clicking it again (or any tab) goes back to the news.
-  function renderReadButton() {
-    var btn = document.getElementById("read-btn");
-    btn.className = "btn-secondary" + (activeTab === "Read" ? " active" : "");
+  // The "Read" and "Calendar" buttons open their view in place of the tabs' content;
+  // clicking the same button again (or any tab) goes back to the news.
+  function renderViewButtons() {
+    var readBtn = document.getElementById("read-btn");
+    readBtn.className = "btn-secondary" + (activeTab === "Read" ? " active" : "");
     document.getElementById("read-count").textContent = Object.keys(readHistory).length;
+
+    var calBtn = document.getElementById("calendar-btn");
+    calBtn.className = "btn-secondary" + (activeTab === "Calendar" ? " active" : "");
   }
 
-  function toggleReadView() {
-    if (activeTab === "Read") {
+  function toggleView(name) {
+    if (activeTab === name) {
       activeTab = lastTab;
     } else {
-      lastTab = activeTab;
-      activeTab = "Read";
+      if (activeTab !== "Read" && activeTab !== "Calendar") lastTab = activeTab;
+      activeTab = name;
     }
     renderTabs();
     renderContent();
@@ -251,6 +256,10 @@
     }
     if (activeTab === "Read") {
       renderRead(content);
+      return;
+    }
+    if (activeTab === "Calendar") {
+      renderCalendar(content);
       return;
     }
 
@@ -436,27 +445,139 @@
       return;
     }
 
-    list.forEach(function (entry) {
-      // Saved entries lack the tag fields the card expects
-      entry.regions = entry.regions || [];
-      entry.educational = false;
-      var card = articleCard(entry, true);
+    list.forEach(function (entry) { content.appendChild(readCard(entry)); });
+  }
 
-      var rating = el("div", "rating");
-      RATINGS.forEach(function (r) {
-        var btn = el("button", "rating-btn " + r + (entry.rating === r ? " active" : ""), ratingLabel(r));
-        btn.onclick = function () { setRating(entry, r); };
-        rating.appendChild(btn);
-      });
-      rating.appendChild(el("span", "read-on", "Read on " + entry.read_at));
-      card.appendChild(rating);
-      content.appendChild(card);
+  // An article card plus the four rating buttons; used by the Read and Calendar views.
+  function readCard(entry) {
+    // Saved entries lack the tag fields the card expects
+    entry.regions = entry.regions || [];
+    entry.educational = false;
+    var card = articleCard(entry, true);
+
+    var rating = el("div", "rating");
+    RATINGS.forEach(function (r) {
+      var btn = el("button", "rating-btn " + r + (entry.rating === r ? " active" : ""), ratingLabel(r));
+      btn.onclick = function () { setRating(entry, r); };
+      rating.appendChild(btn);
     });
+    rating.appendChild(el("span", "read-on", "Read on " + entry.read_at));
+    card.appendChild(rating);
+    return card;
+  }
+
+  // ---- Calendar ------------------------------------------------------------
+
+  // "YYYY-MM-DD" -> how many articles were marked read that day
+  function readCountsByDay() {
+    var counts = {};
+    Object.keys(readHistory).forEach(function (link) {
+      var day = (readHistory[link].read_at || "").slice(0, 10);
+      if (day) counts[day] = (counts[day] || 0) + 1;
+    });
+    return counts;
+  }
+
+  function entriesForDay(day) {
+    return Object.keys(readHistory)
+      .map(function (link) { return readHistory[link]; })
+      .filter(function (e) { return (e.read_at || "").slice(0, 10) === day; })
+      .sort(byReadAt);
+  }
+
+  function pad2(n) { return n < 10 ? "0" + n : "" + n; }
+  function dayKey(year, month, day) { return year + "-" + pad2(month + 1) + "-" + pad2(day); }
+
+  // Colour step of a day cell: more articles read that day -> darker green
+  function countLevel(count) {
+    if (!count) return 0;
+    if (count <= 2) return 1;
+    if (count <= 5) return 2;
+    if (count <= 9) return 3;
+    return 4;
+  }
+
+  function renderCalendar(content) {
+    var today = new Date();
+    if (calYear === null) {
+      calYear = today.getFullYear();
+      calMonth = today.getMonth();
+    }
+
+    var counts = readCountsByDay();
+    var daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+    // Date.getDay() is 0 for Sunday; the grid starts on Monday
+    var leading = (new Date(calYear, calMonth, 1).getDay() + 6) % 7;
+
+    var monthTotal = 0;
+    for (var d = 1; d <= daysInMonth; d++) monthTotal += counts[dayKey(calYear, calMonth, d)] || 0;
+
+    var panel = el("section", "calendar");
+
+    var head = el("div", "cal-head");
+    var prev = el("button", "cal-nav", "\u2039");
+    prev.title = "Previous month";
+    prev.onclick = function () { stepMonth(-1); };
+    var next = el("button", "cal-nav", "\u203a");
+    next.title = "Next month";
+    next.onclick = function () { stepMonth(1); };
+    head.appendChild(prev);
+    head.appendChild(next);
+    head.appendChild(el("span", "cal-month", MONTH_NAMES[calMonth] + " " + calYear));
+    head.appendChild(el("span", "cal-total", monthTotal + " articles read this month"));
+    panel.appendChild(head);
+
+    var grid = el("div", "cal-grid");
+    WEEKDAYS.forEach(function (w) { grid.appendChild(el("div", "cal-weekday", w)); });
+    for (var i = 0; i < leading; i++) grid.appendChild(el("div", "cal-blank"));
+
+    for (var day = 1; day <= daysInMonth; day++) {
+      var key = dayKey(calYear, calMonth, day);
+      var count = counts[key] || 0;
+      var cell = el("button", "cal-day level-" + countLevel(count));
+      if (key === dayKey(today.getFullYear(), today.getMonth(), today.getDate())) cell.className += " today";
+      if (key === calSelectedDay) cell.className += " selected";
+      cell.appendChild(el("span", "cal-daynum", day));
+      if (count) cell.appendChild(el("span", "cal-count", count));
+      cell.title = count === 1 ? "1 article read" : count + " articles read";
+      cell.onclick = (function (k) {
+        return function () {
+          calSelectedDay = calSelectedDay === k ? null : k;
+          renderContent();
+        };
+      })(key);
+      grid.appendChild(cell);
+    }
+    panel.appendChild(grid);
+    content.appendChild(panel);
+
+    if (!calSelectedDay) {
+      content.appendChild(el("p", "empty", "Click a day to see what you read."));
+      return;
+    }
+
+    var entries = entriesForDay(calSelectedDay).filter(isVisible);
+    content.appendChild(el("p", "cal-selection", calSelectedDay + " \u2014 " +
+      (entries.length === 1 ? "1 article" : entries.length + " articles")));
+    if (entries.length === 0) {
+      content.appendChild(el("p", "empty", "Nothing read on this day."));
+      return;
+    }
+    entries.forEach(function (entry) { content.appendChild(readCard(entry)); });
+  }
+
+  function stepMonth(delta) {
+    calMonth += delta;
+    if (calMonth < 0) { calMonth = 11; calYear -= 1; }
+    if (calMonth > 11) { calMonth = 0; calYear += 1; }
+    calSelectedDay = null;
+    renderContent();
   }
 
   // ---- Wire up -------------------------------------------------------------
   document.getElementById("refresh-btn").onclick = refreshNews;
-  document.getElementById("read-btn").onclick = toggleReadView;
+  document.getElementById("read-btn").onclick = function () { toggleView("Read"); };
+  document.getElementById("calendar-btn").onclick = function () { toggleView("Calendar"); };
   document.getElementById("search").oninput = function (e) {
     searchText = e.target.value.trim().toLowerCase();
     renderContent();
